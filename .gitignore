@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+logs/
+.env
+.claude/
+.playwright-cli/
+.pid
+.app.pid
+web/assets/

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#020405" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      name="description"
+      content="搜索 TA 的抖音主页。无痕查看，不留下访问记录。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="悄悄看一眼" />
+    <meta property="og:description" content="搜索 TA 的抖音主页。无痕查看，不留下访问记录。" />
+    <meta property="og:image" content="__SHARE_IMAGE_HREF__" />
+    <meta itemprop="name" content="悄悄看一眼" />
+    <meta itemprop="description" content="搜索 TA 的抖音主页。无痕查看，不留下访问记录。" />
+    <meta itemprop="image" content="__SHARE_IMAGE_HREF__" />
+    <title>悄悄看一眼</title>
+    <link rel="stylesheet" href="__STYLE_HREF__" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <button class="mobile-back-btn" id="mobileBackBtn" type="button" aria-label="返回上一页" hidden>
+      <span aria-hidden="true"></span>
+    </button>
+    <main class="app-shell">
+      <section class="view view-home" id="homeView">
+        <div class="brand-lockup">
+          <h1>悄悄看一眼</h1>
+          <p class="subtitle">
+            <span>保持距离，保持清醒。</span>
+            <span>看一眼就撤。</span>
+          </p>
+        </div>
+
+        <form class="search-panel" id="searchForm">
+          <label class="sr-only" for="uniqueIdInput">dy 号</label>
+          <input
+            id="uniqueIdInput"
+            class="search-input"
+            type="text"
+            autocomplete="off"
+            inputmode="text"
+            placeholder="输入 TA 的 dy 号"
+          />
+          <button class="primary-btn" type="submit">看一眼</button>
+          <p class="privacy-note">无痕浏览，不会留下访问记录。</p>
+          <p class="error-text" id="homeError" hidden></p>
+        </form>
+
+        <section class="history-section" id="historySection" hidden>
+          <h2>曾经在意过的</h2>
+          <div class="history-list" id="historyList"></div>
+        </section>
+
+        <div class="home-feedback-entry">
+          <button id="feedbackEntryBtn" type="button">反馈</button>
+        </div>
+      </section>
+
+      <section class="view view-loading" id="loadingView" hidden>
+        <div class="loading-orb" aria-hidden="true"></div>
+        <p class="loading-text" id="loadingText">等一下，在翻。</p>
+      </section>
+
+      <section class="view view-result" id="resultView" hidden>
+        <header class="result-header">
+          <div class="user-card" id="userCard"></div>
+          <p class="result-summary" id="resultSummary" hidden></p>
+        </header>
+
+        <section class="video-list" id="videoList"></section>
+
+        <div class="result-actions" id="resultActions" hidden>
+          <button class="secondary-btn" id="loadMoreBtn" type="button" hidden>再看一点</button>
+          <button class="back-home-btn" id="backHomeBtn" type="button" hidden>不想看了</button>
+        </div>
+
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <section class="feedback-sheet" id="feedbackSheet" aria-label="匿名反馈" hidden>
+      <div class="feedback-backdrop" id="feedbackBackdrop"></div>
+      <form class="feedback-panel" id="feedbackForm" role="dialog" aria-modal="true" aria-label="匿名反馈">
+        <div class="feedback-header">
+          <div>
+            <h2>反馈</h2>
+          </div>
+          <button class="feedback-close" id="feedbackCloseBtn" type="button" aria-label="关闭反馈">×</button>
+        </div>
+        <div class="feedback-body">
+          <p class="feedback-error" id="feedbackError" hidden></p>
+          <label class="sr-only" for="feedbackMessage">反馈内容</label>
+          <textarea id="feedbackMessage" class="feedback-textarea" maxlength="500" rows="5" placeholder="想说什么都行"></textarea>
+        </div>
+        <div class="feedback-actions">
+          <span class="feedback-count" id="feedbackCount">0/500</span>
+          <button class="feedback-submit" id="feedbackSubmitBtn" type="submit">发送</button>
+        </div>
+      </form>
+    </section>
+    <div class="detail-loading" id="detailLoading" role="status" aria-live="polite" hidden>
+      <div class="detail-loading-orb" aria-hidden="true"></div>
+      <p id="detailLoadingText">等一下，正在打开。</p>
+    </div>
+
+    <div class="modal video-modal" id="videoModal" hidden>
+      <button class="close-btn" id="closeVideoBtn" type="button" aria-label="关掉视频">×</button>
+      <span class="video-source-badge" id="videoSourceBadge" aria-live="polite"></span>
+      <button class="detail-action-btn" id="videoCommentBtn" type="button" aria-label="查看评论">
+        <span class="detail-action-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </span>
+        <span>评论</span>
+      </button>
+      <div class="video-stage" id="videoStage">
+        <video id="videoPlayer" class="video-player" playsinline webkit-playsinline></video>
+      </div>
+      <div class="video-controls" id="videoControls">
+        <button class="video-control-btn" id="videoToggleBtn" type="button" aria-label="播放或暂停">
+          <span id="videoToggleIcon">▶</span>
+        </button>
+        <input class="video-seek" id="videoSeek" type="range" min="0" max="1000" value="0" step="1" aria-label="播放进度" />
+        <span class="video-time" id="videoTime">0:00</span>
+        <button class="video-control-btn" id="videoMuteBtn" type="button" aria-label="静音">
+          <span id="videoMuteIcon">声音</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="modal image-modal" id="imageModal" hidden>
+      <button class="close-btn" id="closeImageBtn" type="button" aria-label="关掉图片">×</button>
+      <span class="image-loading" id="imageLoading" style="display:none;">画面快出来了。</span>
+      <button class="detail-action-btn" id="imageCommentBtn" type="button" aria-label="查看评论">
+        <span class="detail-action-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </span>
+        <span>评论</span>
+      </button>
+      <div class="image-scroll" id="imageScroll"></div>
+      <div class="image-counter" id="imageCounter" hidden></div>
+      <div class="image-dots" id="imageDots" hidden></div>
+    </div>
+
+    <section class="comment-sheet" id="commentSheet" aria-label="评论" hidden>
+      <div class="comment-sheet-backdrop" id="commentSheetBackdrop"></div>
+      <div class="comment-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="commentSheetTitle">
+        <header class="comment-sheet-header">
+          <span></span>
+          <h2 id="commentSheetTitle">评论</h2>
+          <button class="comment-sheet-close" id="closeCommentSheetBtn" type="button" aria-label="关闭评论">×</button>
+        </header>
+        <div class="comment-sheet-body" id="commentSheetBody">
+          <p class="comment-sheet-state">评论加载中。<span>只看公开能看到的。</span></p>
+        </div>
+      </div>
+    </section>
+
+    <svg class="global-grain" aria-hidden="true">
+      <filter id="grain">
+        <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
+        <feColorMatrix type="saturate" values="0" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(#grain)" />
+    </svg>
+    <script src="__APP_HREF__" defer></script>
+  </body>
+</html>

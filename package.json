@@ -1,0 +1,25 @@
+{
+  "name": "fangxiaba-open",
+  "version": "1.0.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:assets && tsc",
+    "build:assets": "node scripts/build-assets.js",
+    "serve": "npm run build && node dist/server.js",
+    "start:api": "npm run build && node dist/server.js",
+    "start": "node scripts/start.js",
+    "stop": "node scripts/stop.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "playwright": "1.59.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  }
+}
