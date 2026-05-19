@@ -30,8 +30,6 @@ const state = {
   commentSheetOpen: false,
   commentReturnContext: null,
   commentAuthorDetailActive: false,
-  feedbackOpen: false,
-  feedbackSubmitting: false,
   videoHandlers: null,
   videoSessionId: 0,
   searching: false,
@@ -139,7 +137,6 @@ const els = {
   homeError: $('homeError'),
   historySection: $('historySection'),
   historyList: $('historyList'),
-  feedbackEntryBtn: $('feedbackEntryBtn'),
   loadingText: $('loadingText'),
   backHomeBtn: $('backHomeBtn'),
   userCard: $('userCard'),
@@ -175,14 +172,6 @@ const els = {
   commentSheetBackdrop: $('commentSheetBackdrop'),
   commentSheetBody: $('commentSheetBody'),
   closeCommentSheetBtn: $('closeCommentSheetBtn'),
-  feedbackSheet: $('feedbackSheet'),
-  feedbackBackdrop: $('feedbackBackdrop'),
-  feedbackForm: $('feedbackForm'),
-  feedbackMessage: $('feedbackMessage'),
-  feedbackCount: $('feedbackCount'),
-  feedbackError: $('feedbackError'),
-  feedbackSubmitBtn: $('feedbackSubmitBtn'),
-  feedbackCloseBtn: $('feedbackCloseBtn'),
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -462,7 +451,6 @@ function setHomeInputFocused(focused) {
 
 function getOpenOverlayName() {
   if (state.commentSheetOpen) return 'comment';
-  if (state.feedbackOpen) return 'feedback';
   if (!els.videoModal.hidden) return 'video';
   if (!els.imageModal.hidden) return 'image';
   return '';
@@ -472,10 +460,6 @@ function closeOpenOverlay() {
   const overlay = getOpenOverlayName();
   if (overlay === 'comment') {
     closeCommentSheet();
-    return true;
-  }
-  if (overlay === 'feedback') {
-    closeFeedbackSheet();
     return true;
   }
   if (overlay === 'video') {
@@ -491,7 +475,6 @@ function closeOpenOverlay() {
 
 function resetOverlayState() {
   closeCommentSheet(true);
-  closeFeedbackSheet(true);
   forceHideModal(els.videoModal);
   forceHideModal(els.imageModal);
   document.body.style.overflow = '';
@@ -1184,90 +1167,6 @@ function resetCommentSheetScroll() {
   requestAnimationFrame(() => {
     els.commentSheetBody.scrollTop = 0;
   });
-}
-
-function openFeedbackSheet() {
-  if (state.feedbackOpen || state.detailLoading || state.searching) return;
-  state.feedbackOpen = true;
-  clearFeedbackError();
-  els.feedbackSheet.hidden = false;
-  pushOverlayNavigation('feedback');
-  requestAnimationFrame(() => {
-    els.feedbackSheet.classList.add('is-visible');
-  });
-}
-
-function closeFeedbackSheet(immediate = false) {
-  state.feedbackOpen = false;
-  state.feedbackSubmitting = false;
-  els.feedbackSubmitBtn.disabled = false;
-  els.feedbackSubmitBtn.textContent = '发送';
-  els.feedbackSheet.classList.remove('is-visible');
-  if (immediate) {
-    resetFeedbackForm();
-    els.feedbackSheet.hidden = true;
-    return;
-  }
-  setTimeout(() => {
-    if (!state.feedbackOpen) {
-      resetFeedbackForm();
-      els.feedbackSheet.hidden = true;
-    }
-  }, prefersReducedMotion() ? 0 : 240);
-}
-
-function resetFeedbackForm() {
-  els.feedbackMessage.value = '';
-  syncFeedbackComposer();
-  clearFeedbackError();
-}
-
-function clearFeedbackError() {
-  els.feedbackError.textContent = '';
-  els.feedbackError.hidden = true;
-}
-
-function setFeedbackError(message) {
-  els.feedbackError.textContent = message;
-  els.feedbackError.hidden = !message;
-}
-
-function syncFeedbackComposer() {
-  els.feedbackCount.textContent = `${els.feedbackMessage.value.length}/500`;
-}
-
-async function submitFeedback() {
-  if (state.feedbackSubmitting) return;
-  const message = els.feedbackMessage.value.trim();
-  if (message.length < 2) {
-    setFeedbackError('再多写一点点。');
-    els.feedbackMessage.focus();
-    return;
-  }
-  if (message.length > 500) {
-    setFeedbackError('最多写 500 个字。');
-    els.feedbackMessage.focus();
-    return;
-  }
-
-  state.feedbackSubmitting = true;
-  clearFeedbackError();
-  els.feedbackSubmitBtn.disabled = true;
-  els.feedbackSubmitBtn.textContent = '发送中';
-  try {
-    await post('/api/feedback', {
-      message,
-      path: window.location.pathname,
-    });
-    closeFeedbackSheet();
-    showToast('收到。谢谢你。');
-  } catch (error) {
-    setFeedbackError(error?.status === 400 ? (error.message || '反馈内容不太对。') : '暂时没提交成功，稍后再试。');
-  } finally {
-    state.feedbackSubmitting = false;
-    els.feedbackSubmitBtn.disabled = false;
-    els.feedbackSubmitBtn.textContent = '发送';
-  }
 }
 
 function renderComment(comment) {
@@ -2368,15 +2267,6 @@ els.backHomeBtn.addEventListener('click', () => {
   goHome();
 });
 
-els.feedbackEntryBtn.addEventListener('click', openFeedbackSheet);
-els.feedbackForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  submitFeedback();
-});
-els.feedbackMessage.addEventListener('input', syncFeedbackComposer);
-els.feedbackBackdrop.addEventListener('click', goBack);
-els.feedbackCloseBtn.addEventListener('click', goBack);
-
 els.mobileBackBtn.addEventListener('click', goBack);
 
 els.videoList.addEventListener('click', async (event) => {
@@ -2492,10 +2382,6 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if (state.commentSheetOpen) {
       closeCommentSheet();
-      return;
-    }
-    if (state.feedbackOpen) {
-      closeFeedbackSheet();
       return;
     }
     closeVideo();

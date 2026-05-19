@@ -54,9 +54,6 @@
           <div class="history-list" id="historyList"></div>
         </section>
 
-        <div class="home-feedback-entry">
-          <button id="feedbackEntryBtn" type="button">反馈</button>
-        </div>
       </section>
 
       <section class="view view-loading" id="loadingView" hidden>
@@ -81,26 +78,6 @@
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <section class="feedback-sheet" id="feedbackSheet" aria-label="匿名反馈" hidden>
-      <div class="feedback-backdrop" id="feedbackBackdrop"></div>
-      <form class="feedback-panel" id="feedbackForm" role="dialog" aria-modal="true" aria-label="匿名反馈">
-        <div class="feedback-header">
-          <div>
-            <h2>反馈</h2>
-          </div>
-          <button class="feedback-close" id="feedbackCloseBtn" type="button" aria-label="关闭反馈">×</button>
-        </div>
-        <div class="feedback-body">
-          <p class="feedback-error" id="feedbackError" hidden></p>
-          <label class="sr-only" for="feedbackMessage">反馈内容</label>
-          <textarea id="feedbackMessage" class="feedback-textarea" maxlength="500" rows="5" placeholder="想说什么都行"></textarea>
-        </div>
-        <div class="feedback-actions">
-          <span class="feedback-count" id="feedbackCount">0/500</span>
-          <button class="feedback-submit" id="feedbackSubmitBtn" type="submit">发送</button>
-        </div>
-      </form>
-    </section>
     <div class="detail-loading" id="detailLoading" role="status" aria-live="polite" hidden>
       <div class="detail-loading-orb" aria-hidden="true"></div>
       <p id="detailLoadingText">等一下，正在打开。</p>

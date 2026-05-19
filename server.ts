@@ -63,9 +63,8 @@ app.get('/api/status', (_req: any, res: any) => {
   res.json({ ok: true, assetVersion: assetManifest.assetVersion, assets: assetManifest, ...getRuntimeStatus() });
 });
 
-// Open-source build keeps these routes as no-op compatibility endpoints. No data is stored.
+// Open-source build keeps this route as a no-op compatibility endpoint. No data is stored.
 app.post('/api/events', (_req: any, res: any) => res.status(204).end());
-app.post('/api/feedback', (_req: any, res: any) => res.json({ ok: true }));
 
 app.post('/api/user-info', rateLimit(playwrightRateLimitConfig()), async (req: any, res: any) => {
   const uniqueId = validateUniqueId(req.body?.uniqueId);
