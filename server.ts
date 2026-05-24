@@ -217,10 +217,14 @@ startServer().catch((e: any) => {
 });
 
 async function startServer(): Promise<void> {
-  if (readBooleanEnv('PLAYWRIGHT_WARMUP', true)) await warmUp();
   server = app.listen(PORT, () => {
     console.log(`服务已启动: http://localhost:${PORT}`);
   });
+  if (readBooleanEnv('PLAYWRIGHT_WARMUP', true)) {
+    warmUp().catch((error: any) => {
+      console.warn(`Playwright 预热失败，服务继续运行: ${error?.message || error}`);
+    });
+  }
 }
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

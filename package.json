@@ -8,7 +8,8 @@
     "build:assets": "node scripts/build-assets.js",
     "serve": "npm run build && node dist/server.js",
     "start:api": "npm run build && node dist/server.js",
-    "start": "node scripts/start.js",
+    "start": "node dist/server.js",
+    "start:local": "node scripts/start.js",
     "stop": "node scripts/stop.js"
   },
   "dependencies": {

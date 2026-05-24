@@ -35,7 +35,7 @@ npx playwright install chromium
 本地运行：
 
 ```bash
-npm start
+npm run serve
 ```
 
 浏览器打开：
@@ -50,10 +50,10 @@ http://localhost:3000/
 npm stop
 ```
 
-也可以前台运行：
+如需本地后台运行：
 
 ```bash
-npm run serve
+npm run start:local
 ```
 
 Docker 运行：
