@@ -28,6 +28,7 @@ const assetManifestPath = path.join(assetsRoot, 'asset-manifest.json');
 const assetManifest = readOrBuildAssetManifest(assetManifestPath);
 const indexHtmlTemplate = readFileSync(indexHtmlPath, 'utf8');
 const PORT = readIntEnv('PORT', 3000, 1, 65535);
+const HOST = process.env.HOST || '0.0.0.0';
 const ALLOWED_ORIGINS = readListEnv('ALLOWED_ORIGINS');
 const MAX_LOOKUP_COUNT = readIntEnv('MAX_LOOKUP_COUNT', 15, 1, 30);
 const MAX_COMMENT_COUNT = readIntEnv('MAX_COMMENT_COUNT', 20, 1, 20);
@@ -217,8 +218,8 @@ startServer().catch((e: any) => {
 });
 
 async function startServer(): Promise<void> {
-  server = app.listen(PORT, () => {
-    console.log(`服务已启动: http://localhost:${PORT}`);
+  server = app.listen(PORT, HOST, () => {
+    console.log(`服务已启动: http://${HOST}:${PORT}`);
   });
   if (readBooleanEnv('PLAYWRIGHT_WARMUP', true)) {
     warmUp().catch((error: any) => {
