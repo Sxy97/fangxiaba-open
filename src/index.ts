@@ -19,6 +19,7 @@ const PLAYWRIGHT_QUEUE_MAX = readIntEnv('PLAYWRIGHT_QUEUE_MAX', 20, 0, 500);
 const LOOKUP_FIRST_WAIT_MS = readIntEnv('LOOKUP_FIRST_WAIT_MS', 3500, 1000, 15_000);
 const LOOKUP_RETRY_WAIT_MS = readIntEnv('LOOKUP_RETRY_WAIT_MS', 5500, 1000, 15_000);
 const LOOKUP_NAVIGATION_TIMEOUT_MS = readIntEnv('LOOKUP_NAVIGATION_TIMEOUT_MS', 8000, 1000, 30_000);
+const LOOKUP_MOBILE_SHARE_WAIT_MS = readIntEnv('LOOKUP_MOBILE_SHARE_WAIT_MS', 8000, 1000, 20_000);
 const IMAGE_FIRST_WAIT_MS = readIntEnv('IMAGE_FIRST_WAIT_MS', 2500, 500, 15_000);
 const IMAGE_RETRY_WAIT_MS = readIntEnv('IMAGE_RETRY_WAIT_MS', 3500, 500, 15_000);
 const IMAGE_NAVIGATION_TIMEOUT_MS = readIntEnv('IMAGE_NAVIGATION_TIMEOUT_MS', 8000, 1000, 30_000);
@@ -51,6 +52,19 @@ const videoUrlInFlight = new Map<string, Promise<string>>();
 const lookupInFlight = new Map<string, Promise<UserResult>>();
 const imageUrlInFlight = new Map<string, Promise<string[]>>();
 const commentInFlight = new Map<string, Promise<CommentResult>>();
+
+type LookupAttemptSource = 'mobileShare' | 'desktopUser';
+
+interface LookupAttemptResult {
+  source: LookupAttemptSource;
+  videos: Aweme[];
+  hasMore: boolean;
+  firstNavigateElapsed: number;
+  firstWaitElapsed: number;
+  retried: boolean;
+  retryNavigateElapsed: number;
+  retryWaitElapsed: number;
+}
 
 export interface SecUidLookupOptions extends FetchOptions {
   nickname?: string;
@@ -464,79 +478,54 @@ export async function fetchByUniqueId(
       };
     }
 
-    const context = await createLookupContext(await getBrowser());
-    const page = await context.newPage();
+    let attempt = await lookupPostsFromPage({
+      secUid: sec_uid,
+      count,
+      source: 'mobileShare',
+      debugLabel: `uniqueId:${uniqueId}:mobile-share`,
+      retryMessage: '  移动分享页首次无数据，重试...',
+      createContext,
+      navigate: gotoMobileShareUserPage,
+      useDirectFallback: false,
+      firstWaitMs: LOOKUP_MOBILE_SHARE_WAIT_MS,
+      retryWaitMs: LOOKUP_MOBILE_SHARE_WAIT_MS,
+    });
 
-    try {
-      await blockLookupHeavyResources(page);
-      const detachLookupDebug = attachLookupDebug(page, `uniqueId:${uniqueId}`);
-
-      // 步骤3: 拦截器 + 访问用户主页，拿首屏视频
-      const { getVideos, getHasMore, getPostUrls, reset } = setupInterceptor(page);
-      const firstPostResponse = waitForPostResponse(page, LOOKUP_FIRST_WAIT_MS + LOOKUP_NAVIGATION_TIMEOUT_MS);
-      const firstNavigateElapsed = await gotoLookupUserPage(page, sec_uid);
-      const firstWaitElapsed = await waitForVideos(getVideos, count, LOOKUP_FIRST_WAIT_MS, {
-        postResponsePromise: firstPostResponse,
-        getPostUrls,
-      });
-
-      // 首次如果没拿到，重试一次（反爬 JS 可能没跑完）
-      let retried = false;
-      let retryNavigateElapsed = 0;
-      let retryWaitElapsed = 0;
-      let allVideos = getVideos().slice(0, count);
-      let hasMore = getHasMore();
-      if (allVideos.length === 0 && getPostUrls().length > 0) {
-        const direct = await fetchDesktopPostList(page, sec_uid, count, getPostUrls()).catch(() => null);
-        if (direct?.aweme_list?.length) {
-          allVideos = direct.aweme_list.slice(0, count);
-          hasMore = Boolean(direct.has_more);
-        }
-      }
-      if (allVideos.length === 0) {
-        console.log('  首次无数据，重试...');
-        retried = true;
-        reset();
-        const retryPostResponse = waitForPostResponse(page, LOOKUP_RETRY_WAIT_MS + LOOKUP_NAVIGATION_TIMEOUT_MS);
-        retryNavigateElapsed = await gotoLookupUserPage(page, sec_uid);
-        retryWaitElapsed = await waitForVideos(getVideos, count, LOOKUP_RETRY_WAIT_MS, {
-          postResponsePromise: retryPostResponse,
-          getPostUrls,
-        });
-        if (allVideos.length === 0) {
-          allVideos = getVideos().slice(0, count);
-          hasMore = getHasMore();
-        }
-      }
-
-      if (allVideos.length === 0) {
-        const direct = await fetchDesktopPostList(page, sec_uid, count, getPostUrls()).catch(async (error) => {
-          await runLookupFailureDiagnostics(page, sec_uid, count, `uniqueId:${uniqueId}`);
-          throw error;
-        });
-        allVideos = direct.aweme_list.slice(0, count);
-        hasMore = Boolean(direct.has_more);
-      }
-      detachLookupDebug();
-      cacheListMediaUrls(allVideos);
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(
-        `  lookup阶段: userInfo=${userInfoElapsed}ms firstNav=${firstNavigateElapsed}ms firstWait=${firstWaitElapsed}ms` +
-          ` retried=${retried} retryNav=${retryNavigateElapsed}ms retryWait=${retryWaitElapsed}ms videos=${allVideos.length}`,
-      );
-      console.log(`  完成，耗时 ${elapsed}s`);
-
-      return {
-        ...publicUserInfo,
+    if (attempt.videos.length === 0) {
+      console.log('  移动分享页无数据，切换桌面用户页...');
+      attempt = await lookupPostsFromPage({
         secUid: sec_uid,
-        videos: allVideos,
-        requestedCount: count,
-        returnedCount: allVideos.length,
-        hasMore: hasMore || Number(aweme_count) > allVideos.length,
-      };
-    } finally {
-      await context.close();
+        count,
+        source: 'desktopUser',
+        debugLabel: `uniqueId:${uniqueId}:desktop-user`,
+        retryMessage: '  桌面用户页首次无数据，重试...',
+        createContext: createLookupContext,
+        navigate: gotoLookupUserPage,
+        useDirectFallback: true,
+        diagnosticsLabel: `uniqueId:${uniqueId}`,
+      });
     }
+
+    const allVideos = attempt.videos;
+    const hasMore = attempt.hasMore;
+    cacheListMediaUrls(allVideos);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(
+      `  lookup阶段: userInfo=${userInfoElapsed}ms source=${attempt.source}` +
+        ` firstNav=${attempt.firstNavigateElapsed}ms firstWait=${attempt.firstWaitElapsed}ms` +
+        ` retried=${attempt.retried} retryNav=${attempt.retryNavigateElapsed}ms` +
+        ` retryWait=${attempt.retryWaitElapsed}ms videos=${allVideos.length}`,
+    );
+    console.log(`  完成，耗时 ${elapsed}s`);
+
+    return {
+      ...publicUserInfo,
+      secUid: sec_uid,
+      videos: allVideos,
+      requestedCount: count,
+      returnedCount: allVideos.length,
+      hasMore: hasMore || Number(aweme_count) > allVideos.length,
+    };
   });
 }
 
@@ -547,83 +536,61 @@ export async function fetchBySecUid(
   return runPlaywrightTask(async () => {
     const { count = 15 } = options;
     const startTime = Date.now();
-    const context = await createLookupContext(await getBrowser());
-    const page = await context.newPage();
+    let attempt = await lookupPostsFromPage({
+      secUid,
+      count,
+      source: 'mobileShare',
+      debugLabel: `secUid:${secUid}:mobile-share`,
+      retryMessage: '  secUid移动分享页首次无数据，重试...',
+      createContext,
+      navigate: gotoMobileShareUserPage,
+      useDirectFallback: false,
+      firstWaitMs: LOOKUP_MOBILE_SHARE_WAIT_MS,
+      retryWaitMs: LOOKUP_MOBILE_SHARE_WAIT_MS,
+    });
 
-    try {
-      await blockLookupHeavyResources(page);
-      const detachLookupDebug = attachLookupDebug(page, `secUid:${secUid}`);
-      const { getVideos, getHasMore, getPostUrls, reset } = setupInterceptor(page);
-      const firstPostResponse = waitForPostResponse(page, LOOKUP_FIRST_WAIT_MS + LOOKUP_NAVIGATION_TIMEOUT_MS);
-      const firstNavigateElapsed = await gotoLookupUserPage(page, secUid);
-      const firstWaitElapsed = await waitForVideos(getVideos, count, LOOKUP_FIRST_WAIT_MS, {
-        postResponsePromise: firstPostResponse,
-        getPostUrls,
-      });
-
-      let retried = false;
-      let retryNavigateElapsed = 0;
-      let retryWaitElapsed = 0;
-      let allVideos = getVideos().slice(0, count);
-      let hasMore = getHasMore();
-      if (allVideos.length === 0 && getPostUrls().length > 0) {
-        const direct = await fetchDesktopPostList(page, secUid, count, getPostUrls()).catch(() => null);
-        if (direct?.aweme_list?.length) {
-          allVideos = direct.aweme_list.slice(0, count);
-          hasMore = Boolean(direct.has_more);
-        }
-      }
-      if (allVideos.length === 0) {
-        console.log('  secUid首次无数据，重试...');
-        retried = true;
-        reset();
-        const retryPostResponse = waitForPostResponse(page, LOOKUP_RETRY_WAIT_MS + LOOKUP_NAVIGATION_TIMEOUT_MS);
-        retryNavigateElapsed = await gotoLookupUserPage(page, secUid);
-        retryWaitElapsed = await waitForVideos(getVideos, count, LOOKUP_RETRY_WAIT_MS, {
-          postResponsePromise: retryPostResponse,
-          getPostUrls,
-        });
-        if (allVideos.length === 0) {
-          allVideos = getVideos().slice(0, count);
-          hasMore = getHasMore();
-        }
-      }
-
-      if (allVideos.length === 0) {
-        const direct = await fetchDesktopPostList(page, secUid, count, getPostUrls()).catch(async (error) => {
-          await runLookupFailureDiagnostics(page, secUid, count, `secUid:${secUid}`);
-          throw error;
-        });
-        allVideos = direct.aweme_list.slice(0, count);
-        hasMore = Boolean(direct.has_more);
-      }
-      detachLookupDebug();
-      cacheListMediaUrls(allVideos);
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(
-        `secUid用户: ${options.nickname || secUid} | firstNav=${firstNavigateElapsed}ms firstWait=${firstWaitElapsed}ms` +
-          ` retried=${retried} retryNav=${retryNavigateElapsed}ms retryWait=${retryWaitElapsed}ms videos=${allVideos.length}`,
-      );
-      console.log(`  完成，耗时 ${elapsed}s`);
-
-      return {
-        nickname: String(options.nickname || '这个人'),
-        avatar: String(options.avatar || ''),
-        uniqueId: '',
-        awemeCount: allVideos.length,
-        signature: String(options.signature || ''),
-        followingCount: 0,
-        followerCount: 0,
-        totalFavorited: 0,
+    if (attempt.videos.length === 0) {
+      console.log('  secUid移动分享页无数据，切换桌面用户页...');
+      attempt = await lookupPostsFromPage({
         secUid,
-        videos: allVideos,
-        requestedCount: count,
-        returnedCount: allVideos.length,
-        hasMore,
-      };
-    } finally {
-      await context.close();
+        count,
+        source: 'desktopUser',
+        debugLabel: `secUid:${secUid}:desktop-user`,
+        retryMessage: '  secUid桌面用户页首次无数据，重试...',
+        createContext: createLookupContext,
+        navigate: gotoLookupUserPage,
+        useDirectFallback: true,
+        diagnosticsLabel: `secUid:${secUid}`,
+      });
     }
+
+    const allVideos = attempt.videos;
+    const hasMore = attempt.hasMore;
+    cacheListMediaUrls(allVideos);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(
+      `secUid用户: ${options.nickname || secUid} | source=${attempt.source}` +
+        ` firstNav=${attempt.firstNavigateElapsed}ms firstWait=${attempt.firstWaitElapsed}ms` +
+        ` retried=${attempt.retried} retryNav=${attempt.retryNavigateElapsed}ms` +
+        ` retryWait=${attempt.retryWaitElapsed}ms videos=${allVideos.length}`,
+    );
+    console.log(`  完成，耗时 ${elapsed}s`);
+
+    return {
+      nickname: String(options.nickname || '这个人'),
+      avatar: String(options.avatar || ''),
+      uniqueId: '',
+      awemeCount: allVideos.length,
+      signature: String(options.signature || ''),
+      followingCount: 0,
+      followerCount: 0,
+      totalFavorited: 0,
+      secUid,
+      videos: allVideos,
+      requestedCount: count,
+      returnedCount: allVideos.length,
+      hasMore,
+    };
   });
 }
 
@@ -826,6 +793,94 @@ async function fetchDesktopPostList(
   };
 }
 
+async function lookupPostsFromPage(options: {
+  secUid: string;
+  count: number;
+  source: LookupAttemptSource;
+  debugLabel: string;
+  retryMessage: string;
+  createContext: (browser: Browser) => Promise<BrowserContext>;
+  navigate: (page: Page, secUid: string) => Promise<number>;
+  useDirectFallback: boolean;
+  firstWaitMs?: number;
+  retryWaitMs?: number;
+  diagnosticsLabel?: string;
+}): Promise<LookupAttemptResult> {
+  const context = await options.createContext(await getBrowser());
+  const page = await context.newPage();
+
+  try {
+    await blockLookupHeavyResources(page);
+    const detachLookupDebug = attachLookupDebug(page, options.debugLabel);
+
+    try {
+      const { getVideos, getHasMore, getPostUrls, reset } = setupInterceptor(page);
+      const firstWaitMs = options.firstWaitMs ?? LOOKUP_FIRST_WAIT_MS;
+      const retryWaitMs = options.retryWaitMs ?? LOOKUP_RETRY_WAIT_MS;
+      const firstPostResponse = waitForPostResponse(page, firstWaitMs + LOOKUP_NAVIGATION_TIMEOUT_MS);
+      const firstNavigateElapsed = await options.navigate(page, options.secUid);
+      const firstWaitElapsed = await waitForVideos(getVideos, options.count, firstWaitMs, {
+        postResponsePromise: firstPostResponse,
+        getPostUrls,
+      });
+
+      let retried = false;
+      let retryNavigateElapsed = 0;
+      let retryWaitElapsed = 0;
+      let videos = getVideos().slice(0, options.count);
+      let hasMore = getHasMore();
+
+      if (options.useDirectFallback && videos.length === 0 && getPostUrls().length > 0) {
+        const direct = await fetchDesktopPostList(page, options.secUid, options.count, getPostUrls()).catch(() => null);
+        if (direct?.aweme_list?.length) {
+          videos = direct.aweme_list.slice(0, options.count);
+          hasMore = Boolean(direct.has_more);
+        }
+      }
+
+      if (videos.length === 0) {
+        console.log(options.retryMessage);
+        retried = true;
+        reset();
+        const retryPostResponse = waitForPostResponse(page, retryWaitMs + LOOKUP_NAVIGATION_TIMEOUT_MS);
+        retryNavigateElapsed = await options.navigate(page, options.secUid);
+        retryWaitElapsed = await waitForVideos(getVideos, options.count, retryWaitMs, {
+          postResponsePromise: retryPostResponse,
+          getPostUrls,
+        });
+        videos = getVideos().slice(0, options.count);
+        hasMore = getHasMore();
+      }
+
+      if (options.useDirectFallback && videos.length === 0) {
+        const direct = await fetchDesktopPostList(page, options.secUid, options.count, getPostUrls()).catch(async (error) => {
+          if (options.diagnosticsLabel) {
+            await runLookupFailureDiagnostics(page, options.secUid, options.count, options.diagnosticsLabel);
+          }
+          throw error;
+        });
+        videos = direct.aweme_list.slice(0, options.count);
+        hasMore = Boolean(direct.has_more);
+      }
+
+      return {
+        source: options.source,
+        videos,
+        hasMore,
+        firstNavigateElapsed,
+        firstWaitElapsed,
+        retried,
+        retryNavigateElapsed,
+        retryWaitElapsed,
+      };
+    } finally {
+      detachLookupDebug();
+    }
+  } finally {
+    await context.close();
+  }
+}
+
 function buildUserInfo(userInfo: any, fallbackUniqueId: string): UserInfo {
   return {
     nickname: String(userInfo?.nickname || ''),
@@ -1006,9 +1061,9 @@ function waitForVideos(
   const start = Date.now();
   let lastCount = 0;
   let lastChangeAt = start;
-  let postResponseSeenAt = 0;
+  let postResponseSeen = false;
   options.postResponsePromise?.then((elapsed) => {
-    if (elapsed !== null) postResponseSeenAt = Date.now();
+    if (elapsed !== null) postResponseSeen = true;
   }).catch(() => {});
   return new Promise((resolve) => {
     const check = () => {
@@ -1020,8 +1075,7 @@ function waitForVideos(
       }
       if (count >= targetCount) return resolve(elapsed);
       if (count > 0 && Date.now() - lastChangeAt >= 700) return resolve(elapsed);
-      if (!postResponseSeenAt && options.getPostUrls?.().length) postResponseSeenAt = Date.now();
-      if (postResponseSeenAt > 0 && count === 0 && Date.now() - postResponseSeenAt >= 1500) return resolve(elapsed);
+      if (!postResponseSeen && options.getPostUrls?.().length) postResponseSeen = true;
       if (elapsed > timeoutMs) return resolve(elapsed);
       setTimeout(check, 200);
     };
@@ -1315,6 +1369,17 @@ async function gotoLookupUserPage(page: Page, secUid: string): Promise<number> {
     timeout: LOOKUP_NAVIGATION_TIMEOUT_MS,
   }).catch((error) => {
     console.warn(`  分享页导航未完成，继续等待视频列表: ${error?.message || error}`);
+  });
+  return Date.now() - start;
+}
+
+async function gotoMobileShareUserPage(page: Page, secUid: string): Promise<number> {
+  const start = Date.now();
+  await page.goto(`https://m.douyin.com/share/user/${secUid}`, {
+    waitUntil: 'commit',
+    timeout: LOOKUP_NAVIGATION_TIMEOUT_MS,
+  }).catch((error) => {
+    console.warn(`  移动分享页导航未完成，继续等待视频列表: ${error?.message || error}`);
   });
   return Date.now() - start;
 }
